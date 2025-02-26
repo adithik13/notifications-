@@ -1,74 +1,60 @@
-require("dotenv").config(); // Load environment variables
+require("dotenv").config(); // load environment variables from .env file
+const express = require("express"); // web framework to handle htp requests
+const cors = require("cors"); // enables cross origin resource sharing
+const http = require("http"); // enables http server
+const { Server } = require("socket.io"); // enables websocket server
+const postmark = require("postmark"); // Postmark email client
 
-const express = require("express");
-const cors = require("cors");
-const http = require("http");
-const { Server } = require("socket.io");
-const { MailerSend, EmailParams, Recipient } = require("mailersend");
+const app = express(); // create express app
+const server = http.createServer(app); // create http server, needed for websockets
+const io = new Server(server, { cors: { origin: "*" } }); // create websocket server, allow connections from any origin
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" },
-});
+app.use(cors()); // allows frontend to connect to backend
+app.use(express.json()); // parse incoming request body as JSON
 
-app.use(cors());
-app.use(express.json());
+// initialize the Postmark client
+const postmarkClient = new postmark.ServerClient(process.env.POSTMARK_API_KEY);
 
-const mailerSend = new MailerSend({
-  apiKey: process.env.MAILERSEND_API_KEY, // 🔥 Uses an environment variable (safer)
-});
-
-// Function to send an email notification
+// function to send an email to ishan using Postmark
 function sendEmailNotification(jobMessage = "HiPerGator Job Completed!") {
-  const recipients = [new Recipient("patelishan@ufl.edu", "Ishan Patel")];
-
-  const emailParams = new EmailParams()
-    .setFrom("akatikhaneni@ufl.edu") // 🔥 Ensure this sender is verified in MailerSend
-    .setFromName("Adithi Katikhaneni")
-    .setRecipients(recipients)
-    .setSubject("🚀 HiPerGator Job Completed!")
-    .setHtml(`<h2>${jobMessage} 🎉</h2><p>You can check the results now.</p>`)
-    .setText(`${jobMessage} - You can check the results now.`);
-
-  mailerSend
-    .send(emailParams)
-    .then(() => console.log("✅ Email sent successfully!"))
-    .catch((error) => console.error("❌ Email sending failed:", error));
+  postmarkClient.sendEmail({
+    From: process.env.POSTMARK_SENDER_EMAIL, // verified Postmark email address 
+    To: "patelishan@ufl.edu", // verified recipient email (must be @ufl.edu in test mode)
+    Subject:  "HiPerGator Job Completed! Woohoo!", 
+    HtmlBody: `<h2>${jobMessage} 🎉</h2><p>You can check the results now.</p>`,
+    TextBody: `${jobMessage} - You can check the results now.`,
+    MessageStream: "outbound"
+  })
+  .then(() => console.log("Email sent successfully via Postmark!"))
+  .catch(error => console.error("Email sending failed:", error));
 }
 
-// Endpoint to receive job completion notifications
-app.post("/notify", (req, res) => {
-  const message = req.body.message || "Job Completed!";
+// endpoint to receive job completion notifications
+app.post("/notify", (req, res) => { // POST request to /notify
+  const message = req.body.message || "Job Completed!"; // get message from request body
+  console.log("📩 Job Completion Message:", message); // log message to console 
 
-  console.log("📩 Job Completion Message:", message);
+  io.emit("job_done", { message }); // emit message to all connected clients
 
-  // Emit WebSocket event for frontend
-  io.emit("job_done", { message });
-
-  // Send email notification
-  sendEmailNotification(message);
+  sendEmailNotification(message); // call the function here to actually send it 
 
   res.status(200).send({ success: true });
 });
 
-// 🔥 Dummy test endpoint
-app.get("/test", (req, res) => {
-  const testMessage = "🔥 Dummy Job Finished! (Test Mode)";
+// Dummy test endpoint
+app.get("/test", (req, res) => { // GET request to /test
+  const testMessage = "Dummy Job Finished! (Test Mode)"; // dummy message
+  console.log("Dummy Job Notification:", testMessage); // log dummy message to console
 
-  console.log("📩 Dummy Job Notification:", testMessage);
+  io.emit("job_done", { message: testMessage }); // emit dummy message to all connected clients
 
-  // Emit WebSocket event for frontend
-  io.emit("job_done", { message: testMessage });
+  sendEmailNotification(testMessage); // call the function here to actually send it
 
-  // Send test email
-  sendEmailNotification(testMessage);
-
-  res.status(200).send({ success: true, message: testMessage });
+  res.status(200).send({ success: true, message: testMessage });  // send success response
 });
 
-io.on("connection", (socket) => {
-  console.log("Client connected");
+io.on("connection", (socket) => { // when a client connects
+  console.log("Client connected"); // log to console
 });
 
-server.listen(5000, () => console.log("🚀 Notification server running on port 5000"));
+server.listen(5000, () => console.log("Notification server running on port 5000")); // start server on port 5000

@@ -30,7 +30,7 @@ function App() {
 
   return (
     <div>
-      <h1>Supercomputer Job Monitor</h1>
+      <h1>HiPerGator Job Monitor</h1>
       <p>Waiting for job completion...</p>
       <ToastContainer position='top-right' autoClose={5000} />
     </div>
